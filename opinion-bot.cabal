@@ -20,6 +20,7 @@ extra-source-files:
     CHANGELOG.md
 data-files:
     .secrets/auth-token.secret
+    .secrets/guildid.secret
     negative-words.txt
     positive-words.txt
 
@@ -46,6 +47,7 @@ executable opinion-bot-exe
   main-is: Main.hs
   other-modules:
       MessageHistory
+      Negotiator
       Paths_opinion_bot
   hs-source-dirs:
       app
