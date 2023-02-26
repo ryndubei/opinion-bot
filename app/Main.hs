@@ -15,7 +15,7 @@ import Paths_opinion_bot (getDataFileName)
 main :: IO ()
 main = do
   tok <- T.readFile =<< getDataFileName ".secrets/auth-token.secret"
-  testServerId <- getDataFileName ".secrets/guildid.secret"
+  testServerId <- read <$> (readFile =<< getDataFileName ".secrets/guildid.secret")
   history <- loadHistory
 
   -- If messagesChan receives a Just Message, it updates history, if it receives a 
@@ -28,12 +28,12 @@ main = do
     iterateHistory historyChan history msgs
 
   err <- runDiscord $ def { discordToken = tok
-                          , discordOnStart = startHandler testServerId
+                          , discordOnStart = startHandler
                           , discordOnEnd = requestFromChan messagesChan historyChan
                                        >>= saveHistory 
                                         >> killThread historyThreadId
                                         >> putStrLn "Ended"
-                          , discordOnEvent = eventHandler testServerId
+                          , discordOnEvent = eventHandler testServerId messagesChan historyChan
                           , discordOnLog = \s -> T.hPutStrLn stderr s >> T.hPutStrLn stderr ""
                           , discordGatewayIntent =
                             def { gatewayIntentMessageContent = True
