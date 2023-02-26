@@ -1,13 +1,13 @@
 module Main (main) where
 
-import SentimentAnalysis (analyseRawMessages)
+import Control.Exception (try, Exception (displayException), IOException)
+import Data.Aeson (encode, eitherDecode)
+import Data.Bifunctor (first)
+import qualified Data.ByteString.Lazy as BS
+import System.Directory (getXdgDirectory, XdgDirectory (XdgCache))
+import System.IO (hPutStrLn, stderr)
 
 import MessageHistory (History, emptyHistory)
-
-import System.Directory (getXdgDirectory, XdgDirectory (XdgCache))
-import Data.Aeson (decode, encode)
-import Data.Maybe (fromMaybe)
-import qualified Data.ByteString.Lazy as BS
 
 main :: IO ()
 main = undefined
@@ -21,5 +21,9 @@ saveHistory history = getHistoryLocation >>= \path -> BS.writeFile path (encode 
 loadHistory :: IO History
 loadHistory = do
   path <- getHistoryLocation
-  mHistory <- decode <$> BS.readFile path
-  pure (fromMaybe emptyHistory mHistory) 
+  historyJson <- first (\e -> 
+    displayException (e :: IOException)) <$> try (BS.readFile path)
+  let mHistory = historyJson >>= eitherDecode
+  either 
+    (\e -> hPutStrLn stderr e >> pure emptyHistory)
+    pure mHistory
