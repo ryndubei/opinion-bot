@@ -1,9 +1,15 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+
 module MessageHistory (History, pushMessage, fetchMessages, latestMessageId, oldestMessageId) where
 
+import Data.Aeson
+
 import Data.Map (Map)
-import Data.Map.Strict qualified as M
-import Data.Maybe (fromMaybe)
+import qualified Data.Map.Strict as M
+
 import Data.Text (Text)
+
 import Discord.Types
   ( ChannelId
   , Message (messageAuthor, messageChannelId, messageContent, messageId, messageTimestamp)
@@ -11,8 +17,11 @@ import Discord.Types
   , User
   )
 
+import Data.Bifunctor (second)
+import Data.Maybe (fromMaybe)
+
 -- | A store of messages in channels by users who posted them.
-newtype History = History (Map ChannelId ChannelMessages)
+newtype History = History (Map ChannelId ChannelMessages) deriving (Show)
 
 -- We only really care about the metadata of the latest/oldest recorded
 -- message, for the rest of the mesages just the contents are enough.
@@ -21,7 +30,35 @@ data ChannelMessages = ChannelMessages
   { userMap :: Map User (Map MessageId Text)
   , latestMessage :: Maybe Message
   , oldestMessage :: Maybe Message
-  }
+  } deriving (Show)
+
+instance FromJSON History where
+  parseJSON = \case
+    Object o -> (o .: "History") >>= fmap (History . M.fromList) . parseJSON
+    x -> fail $ "unexpected json: " ++ show x
+
+instance ToJSON History where
+  toJSON (History historyMap) = Object ("History" .= M.toList historyMap)
+
+instance FromJSON ChannelMessages where
+  parseJSON = withObject "ChannelMessages" $ \v -> ChannelMessages
+    -- I cannot convert directly because User and MessageId have no FromJSONKey
+    -- instance, so I have to turn the maps into a list first.
+    <$> fmap (M.fromList . map (second M.fromList)) (v .: "userMap")
+    <*> v .: "latestMessage"
+    <*> v .: "oldestMessage"
+
+instance ToJSON ChannelMessages where
+  toJSON (ChannelMessages userMap latestMessage oldestMessage) =
+    object 
+      [ "userMap" .= (map (second M.toList) . M.toList) userMap
+      , "latestMessage" .= latestMessage
+      , "oldestMessage" .= oldestMessage
+      ]
+  toEncoding (ChannelMessages userMap latestMessage oldestMessage) =
+    pairs ( "userMap" .= (map (second M.toList) . M.toList) userMap 
+         <> "latestMessage" .= latestMessage 
+         <> "oldestMessage" .= oldestMessage)
 
 defaultChannelMessages :: ChannelMessages
 defaultChannelMessages =

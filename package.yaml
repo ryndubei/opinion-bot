@@ -55,6 +55,7 @@ executables:
     dependencies:
     - opinion-bot
     - discord-haskell
+    - aeson
 
 tests:
   opinion-bot-test:
