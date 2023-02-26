@@ -1,30 +1,56 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module MessageHistory (History, pushMessage, fetchMessages, latestMessageId, oldestMessageId, emptyHistory) where
+module MessageHistory 
+  ( History 
+  , pushMessage
+  , fetchMessages 
+  , latestMessageId 
+  , oldestMessageId 
+  , saveHistory
+  , loadHistory
+  ) 
+where
 
+import Control.Exception
 import Data.Aeson
-
+import Data.Bifunctor (first, second)
+import qualified Data.ByteString.Lazy as BS
 import Data.Map (Map)
 import qualified Data.Map.Strict as M
-
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-
 import Discord.Types
   ( ChannelId
   , Message (messageAuthor, messageChannelId, messageContent, messageId, messageTimestamp)
   , MessageId
   , User
   )
-
-import Data.Bifunctor (second)
-import Data.Maybe (fromMaybe)
+import System.Directory (getXdgDirectory, XdgDirectory(XdgCache) )
+import System.IO (hPutStrLn, stderr)
 
 -- | A store of messages in channels by users who posted them.
 newtype History = History (Map ChannelId ChannelMessages) deriving (Show)
 
 emptyHistory :: History
 emptyHistory = History M.empty
+
+getHistoryLocation :: IO FilePath
+getHistoryLocation = getXdgDirectory XdgCache "opinion-bot-history.json"
+
+saveHistory :: History -> IO ()
+saveHistory history = getHistoryLocation >>= \path -> 
+  BS.writeFile path (encode history)
+
+loadHistory :: IO History
+loadHistory = do
+  path <- getHistoryLocation
+  historyJson <- first (\e -> 
+    displayException (e :: IOException)) <$> try (BS.readFile path)
+  let mHistory = historyJson >>= eitherDecode
+  either 
+    (\e -> hPutStrLn stderr e >> pure emptyHistory)
+    pure mHistory
 
 -- We only really care about the metadata of the latest/oldest recorded
 -- message, for the rest of the mesages just the contents are enough.
