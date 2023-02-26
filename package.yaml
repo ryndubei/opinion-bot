@@ -56,6 +56,8 @@ executables:
     - opinion-bot
     - discord-haskell
     - aeson
+    - directory
+    - bytestring
 
 tests:
   opinion-bot-test:

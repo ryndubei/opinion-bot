@@ -53,7 +53,9 @@ executable opinion-bot-exe
   build-depends:
       aeson
     , base >=4.7 && <5
+    , bytestring
     , containers
+    , directory
     , discord-haskell
     , opinion-bot
     , text

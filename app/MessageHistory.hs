@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module MessageHistory (History, pushMessage, fetchMessages, latestMessageId, oldestMessageId) where
+module MessageHistory (History, pushMessage, fetchMessages, latestMessageId, oldestMessageId, emptyHistory) where
 
 import Data.Aeson
 
@@ -22,6 +22,9 @@ import Data.Maybe (fromMaybe)
 
 -- | A store of messages in channels by users who posted them.
 newtype History = History (Map ChannelId ChannelMessages) deriving (Show)
+
+emptyHistory :: History
+emptyHistory = History M.empty
 
 -- We only really care about the metadata of the latest/oldest recorded
 -- message, for the rest of the mesages just the contents are enough.
