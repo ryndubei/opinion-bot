@@ -30,6 +30,7 @@ source-repository head
 
 library
   exposed-modules:
+      Lib
       SentimentAnalysis
       SentimentAnalysis.SentimentData
   other-modules:
