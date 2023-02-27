@@ -8,7 +8,7 @@ import Discord
 import qualified Discord.Requests as R
 import Control.Monad (void)
 import MessageHistory (History)
-import Lib (DataChannel)
+import Lib (DataChannel, send)
 import qualified Data.Text.IO as T
 import System.IO (stderr)
 import Control.Monad.IO.Class (liftIO)
@@ -35,22 +35,23 @@ ping _ = SlashCommand
   }
 
 importData :: DataChannel Message History -> SlashCommand
-importData reqChannel = undefined
+importData msgChannel = undefined
 
 analyse :: DataChannel Message History -> SlashCommand
-analyse reqChannel = undefined
+analyse msgChannel = undefined
 
 startHandler :: DiscordHandler ()
 startHandler = liftIO $ T.hPutStrLn stderr "Started opinion-bot"
 
 eventHandler :: GuildId -> DataChannel Message History -> Event -> DiscordHandler ()
-eventHandler testServerId reqChannel = \case
+eventHandler testServerId msgChannel = \case
   Ready _ _ _ _ _ _ (PartialApplication appId _) -> onReady appId testServerId
-  InteractionCreate intr                         -> onInteractionCreate reqChannel intr
+  InteractionCreate intr                         -> onInteractionCreate msgChannel intr
+  MessageCreate msg                              -> liftIO $ send msg msgChannel
   _                                              -> pure ()
 
 onReady :: ApplicationId -> GuildId -> DiscordHandler ()
-onReady = undefined
+onReady _ _ = liftIO $ T.putStrLn "onReady not yet defined"
 
 onInteractionCreate :: DataChannel Message History -> Interaction -> DiscordHandler ()
-onInteractionCreate = undefined
+onInteractionCreate _ _ = liftIO $ T.putStrLn "onInteractionCreate not yet defined"
