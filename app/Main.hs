@@ -7,7 +7,7 @@ import Discord
 import Discord.Types
 import System.IO (stderr)
 
-import Lib (request, spawnRequestManager)
+import Lib (request, spawnDataManager)
 import MessageHistory (pushMessage, loadHistory, saveHistory)
 import Negotiator (startHandler, eventHandler)
 import Paths_opinion_bot (getDataFileName)
@@ -18,7 +18,7 @@ main = do
   testServerId <- read <$> (readFile =<< getDataFileName ".secrets/guildid.secret")
   history <- loadHistory
 
-  (historyThreadId, reqChannel) <- spawnRequestManager pushMessage history
+  (historyThreadId, reqChannel) <- spawnDataManager pushMessage history
 
   err <- runDiscord $ def { discordToken = tok
                           , discordOnStart = startHandler
