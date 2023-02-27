@@ -24,7 +24,8 @@ import Discord.Types
   ( ChannelId
   , Message (messageAuthor, messageChannelId, messageContent, messageId, messageTimestamp)
   , MessageId
-  , User
+  , userId
+  , UserId, UTCTime
   )
 import System.Directory (getXdgDirectory, XdgDirectory(XdgCache) )
 import System.IO (hPutStrLn, stderr)
@@ -56,9 +57,9 @@ loadHistory = do
 -- message, for the rest of the mesages just the contents are enough.
 data ChannelMessages = ChannelMessages
   -- using Map MessageId Text allows us to replace duplicate messages easily
-  { userMap :: Map User (Map MessageId Text)
-  , latestMessage :: Maybe Message
-  , oldestMessage :: Maybe Message
+  { userMap :: Map UserId (Map MessageId Text)
+  , latestMessage :: Maybe (UTCTime, MessageId)
+  , oldestMessage :: Maybe (UTCTime, MessageId)
   } deriving (Show)
 
 instance FromJSON History where
@@ -107,32 +108,34 @@ pushMessage msg (History history) = History $ M.insert (messageChannelId msg) ch
       ChannelMessages
         { latestMessage =
             case latestMessage channelMessages of
-              Nothing -> Just msg
-              Just msg' ->
-                if messageTimestamp msg > messageTimestamp msg'
-                  then Just msg
-                  else Just msg'
+              Nothing -> Just (messageTimestamp msg, messageId msg)
+              Just (existingTime, existingId) ->
+                if messageTimestamp msg > existingTime
+                  then Just (messageTimestamp msg, messageId msg)
+                  else Just (existingTime, existingId)
+
         , oldestMessage =
             case oldestMessage channelMessages of
-              Nothing -> Just msg
-              Just msg' ->
-                if messageTimestamp msg < messageTimestamp msg'
-                  then Just msg
-                  else Just msg'
+              Nothing -> Just (messageTimestamp msg, messageId msg)
+              Just (existingTime, existingId) ->
+                if messageTimestamp msg < existingTime
+                  then Just (messageTimestamp msg, messageId msg)
+                  else Just (existingTime, existingId)
+
         , userMap =
             M.insertWith
               ( \newMsg oldMsgs ->
                   let [(msgId, msgContent)] = M.toList newMsg -- I am well aware that this is cursed, but I could not find a Data.Map function
                    in M.insert msgId msgContent oldMsgs -- with signature :: (a -> b -> b) -> k -> a -> Map k b -> Map k b
               )
-              (messageAuthor msg)
+              ((userId . messageAuthor) msg)
               (M.fromList [(messageId msg, messageContent msg)])
               (userMap channelMessages)
         }
 
 -- | Given a History, fetch all messages that match the optional parameters for
 -- Channel and User.
-fetchMessages :: History -> Maybe ChannelId -> Maybe User -> [Text]
+fetchMessages :: History -> Maybe ChannelId -> Maybe UserId -> [Text]
 fetchMessages history@(History historyMap) mcid muser =
   case mcid of
     Just cid ->
@@ -145,13 +148,13 @@ fetchMessages history@(History historyMap) mcid muser =
 fetchChannelMessages :: History -> ChannelId -> ChannelMessages
 fetchChannelMessages (History history) cid = fromMaybe defaultChannelMessages $ cid `M.lookup` history
 
-fetchUserMessages :: ChannelMessages -> User -> [Text]
+fetchUserMessages :: ChannelMessages -> UserId -> [Text]
 fetchUserMessages cmsgs user = maybe [] (map snd . M.toList) (user `M.lookup` userMap cmsgs)
 
 -- | Get the MessageId of the latest message posted to a channel.
 latestMessageId :: History -> ChannelId -> Maybe MessageId
-latestMessageId history cid = messageId <$> (latestMessage . fetchChannelMessages history) cid
+latestMessageId history cid = snd <$> (latestMessage . fetchChannelMessages history) cid
 
 -- | Get the MessageId of the oldest message posted to a channel.
 oldestMessageId :: History -> ChannelId -> Maybe MessageId
-oldestMessageId history cid = messageId <$> (oldestMessage . fetchChannelMessages history) cid
+oldestMessageId history cid = snd <$> (oldestMessage . fetchChannelMessages history) cid
