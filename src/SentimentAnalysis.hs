@@ -1,9 +1,9 @@
-module SentimentAnalysis ( analyseRawMessages ) where
+module SentimentAnalysis ( analyseRawMessages, wordInvariant ) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Data.Char (isLetter)
+import Data.Char (isLetter, isLower)
 
 import SentimentAnalysis.SentimentData 
   ( SentimentData
@@ -16,7 +16,10 @@ import SentimentAnalysis.SentimentData
 analyseRawMessages :: [Text] -> Text -> IO Double
 analyseRawMessages texts word = getSentimentData >>= \m ->
   let sentences = map toSentence texts
-   in pure (analyseWordSentiments m word sentences)
+   in pure (analyseWordSentiments m (T.toLower word) sentences)
+
+wordInvariant :: Text -> Bool
+wordInvariant t = T.all isLetter t && T.all isLower t
 
 -- | Type alias for `[Text]`. Assumed to be a list of words containing only
 -- lowercase letters.

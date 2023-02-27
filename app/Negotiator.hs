@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
 module Negotiator (startHandler, eventHandler) where
 
 import Data.Text (Text)
@@ -7,16 +8,18 @@ import Discord.Interactions
 import Discord
 import qualified Discord.Requests as R
 import Control.Monad (void, when, forM_)
-import MessageHistory (History, oldestMessageId)
+import MessageHistory (History, oldestMessageId, fetchMessages)
 import Lib (DataChannel, send, request)
 import qualified Data.Text.IO as T
 import System.IO (stderr)
 import Control.Monad.IO.Class (liftIO)
 import Discord.Types
-import Data.Maybe (isNothing, fromJust, fromMaybe)
+import Data.Maybe (isNothing, fromJust, fromMaybe, isJust)
 import qualified Data.Text as T
 import Discord.Requests (MessageTiming (LatestMessages, BeforeMessage))
 import Data.List (find)
+import SentimentAnalysis (analyseRawMessages, wordInvariant)
+import Numeric (showFFloat)
 
 data SlashCommand = SlashCommand
   { name :: Text
@@ -24,7 +27,7 @@ data SlashCommand = SlashCommand
   , handler :: Interaction -> Maybe OptionsData -> DiscordHandler ()}
 
 mySlashCommands :: [DataChannel Message History -> SlashCommand]
-mySlashCommands = [ping, importData]
+mySlashCommands = [ping, importData, analyse]
 
 ping :: DataChannel Message History -> SlashCommand
 ping _ = SlashCommand
@@ -45,13 +48,12 @@ importData msgChannel = SlashCommand
   , handler = \intr _options -> do
       let cid = interactionChannelId intr
       when (isNothing cid) $ fail "Could not get origin channel of slash command"
-      let displayCid = "<#" ++ (show . fromJust) cid ++ ">"
       void . restCall $
         R.CreateInteractionResponse
           (interactionId intr)
           (interactionToken intr)
-          (interactionResponseBasic . T.pack $ "Importing messages from " ++ displayCid)
-      msgTiming <- maybe LatestMessages BeforeMessage . (`oldestMessageId` fromJust cid) 
+          (interactionResponseBasic $ "Importing messages from " <> displayChannel (fromJust cid))
+      msgTiming <- maybe LatestMessages BeforeMessage . (`oldestMessageId` fromJust cid)
         <$> (liftIO . request) msgChannel
       report <- runImport msgTiming msgChannel (fromJust cid)
       echo report
@@ -68,17 +70,65 @@ runImport msgTiming msgChannel cid = do
   mmsgs <- restCall $ R.GetChannelMessages cid (100, msgTiming)
   case mmsgs of
     Left e -> (pure . T.pack) ("Error while importing messages: " ++ show e)
-    Right msgs -> 
-      if null msgs 
-        then (pure . T.pack) ("Done importing messages from <#" ++ show cid ++ ">")
+    Right msgs ->
+      if null msgs
+        then pure ("Done importing messages from " <> displayChannel cid )
         else do
           mapM_ (liftIO . (`send` msgChannel)) msgs
-          oldestMsg <- fromMaybe (error "Oldest message ID should exist at this point") 
+          oldestMsg <- fromMaybe (error "Oldest message ID should exist at this point")
             . (`oldestMessageId` cid) <$> (liftIO . request) msgChannel
           runImport (BeforeMessage oldestMsg) msgChannel cid
 
+displayChannel :: ChannelId -> Text
+displayChannel cid = T.pack ("<#" ++ show cid ++ ">")
+
+displayUser :: UserId -> Text
+displayUser uid = T.pack ("<@" ++ show uid ++ ">")
+
 analyse :: DataChannel Message History -> SlashCommand
-analyse msgChannel = undefined
+analyse msgChannel = SlashCommand
+  { name = "analyse"
+  , registration = createChatInput "analyse" "analyse message sentiment"
+      >>= \cac -> pure $ cac { createOptions =
+        Just $ OptionsValues [ OptionValueString "keyword" Nothing "keyword for sentiment analysis" Nothing True (Left False) (Just 1) Nothing
+                             , OptionValueChannel "channel" Nothing "text channel to analyse" Nothing False (Just [ApplicationCommandChannelTypeGuildText])
+                             , OptionValueUser "user" Nothing "user to analyse" Nothing False
+                             ]
+        }
+
+  , handler = \intr options -> do
+      history <- liftIO $ request msgChannel
+      case options of
+        Just (OptionsDataValues ( OptionDataValueString {optionDataValueString = Right keyword}
+                                : os
+                                )) ->
+          let (cid,uid) = case os of
+                [OptionDataValueChannel {optionDataValueChannel = c}, OptionDataValueUser {optionDataValueUser = u}] -> (Just c, Just u)
+                [OptionDataValueChannel {optionDataValueChannel = c}, _] -> (Just c, Nothing)
+                [OptionDataValueUser {optionDataValueUser = u}] -> (Nothing, Just u)
+                _ -> (Nothing,Nothing)
+              txts = fetchMessages history cid uid
+              reply = "Calculated sentiment for keyword " <> keyword 
+                <> (if isJust cid then " in channel " <> displayChannel (fromJust cid) else "")
+                <> (if isJust uid then " by user " <> displayUser (fromJust uid) else "")
+                <> ": "
+           in if wordInvariant (T.toLower keyword)
+                then liftIO (analyseRawMessages txts keyword)
+                  >>= \sentiment -> void . restCall $
+                    R.CreateInteractionResponse
+                      (interactionId intr)
+                      (interactionToken intr)
+                      (InteractionResponseChannelMessage $
+                        (interactionResponseMessageBasic (reply <> T.pack (showFFloat (Just 6) sentiment ""))) 
+                          {interactionResponseMessageAllowedMentions = Nothing})
+                else void . restCall $ R.CreateInteractionResponse
+                  (interactionId intr)
+                  (interactionToken intr)
+                  (interactionResponseBasic 
+                    "Invalid input: keyword must be letters only without spaces"
+                  )
+        _ -> echo "did not receive keyword for analyse"
+  }
 
 startHandler :: DiscordHandler ()
 startHandler = echo "Started opinion-bot"
@@ -87,12 +137,12 @@ eventHandler :: GuildId -> DataChannel Message History -> Event -> DiscordHandle
 eventHandler testServerId msgChannel = \case
   Ready _ _ _ _ _ _ (PartialApplication appId _) -> onReady mySlashCommands' appId testServerId
   InteractionCreate intr                         -> onInteractionCreate mySlashCommands' intr
-  MessageCreate msg                              -> echo ( "( " 
+  MessageCreate msg                              -> echo ( "( "
                                                         <> (T.pack . show . messageTimestamp $ msg)
-                                                        <> " ) " 
-                                                        <> (userName . messageAuthor) msg 
-                                                        <> ": " 
-                                                        <> messageContent msg 
+                                                        <> " ) "
+                                                        <> (userName . messageAuthor) msg
+                                                        <> ": "
+                                                        <> messageContent msg
                                                         <> if (not . null . messageAttachments) msg then " [ATTACHMENT]" else ""
                                                         <> if (not . null . messageEmbeds) msg then " [EMBED]" else ""
                                                          )
