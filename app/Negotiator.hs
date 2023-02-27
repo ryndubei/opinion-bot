@@ -120,7 +120,8 @@ analyse msgChannel = SlashCommand
                       (interactionToken intr)
                       (InteractionResponseChannelMessage $
                         (interactionResponseMessageBasic (reply <> T.pack (showFFloat (Just 6) sentiment ""))) 
-                          {interactionResponseMessageAllowedMentions = Nothing})
+                          { interactionResponseMessageAllowedMentions = Just (def {mentionUsers = False}) }
+                      )
                 else void . restCall $ R.CreateInteractionResponse
                   (interactionId intr)
                   (interactionToken intr)
