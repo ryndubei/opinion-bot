@@ -112,7 +112,7 @@ analyse msgChannel = SlashCommand
                 <> (if isJust cid then " in channel " <> displayChannel (fromJust cid) else "")
                 <> (if isJust uid then " by user " <> displayUser (fromJust uid) else "")
                 <> ": "
-           in if wordInvariant (T.toLower keyword)
+           in if wordInvariant keyword
                 then liftIO (analyseRawMessages txts keyword)
                   >>= \sentiment -> void . restCall $
                     R.CreateInteractionResponse

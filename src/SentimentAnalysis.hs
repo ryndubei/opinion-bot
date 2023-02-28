@@ -19,7 +19,7 @@ analyseRawMessages texts word = getSentimentData >>= \m ->
    in pure (analyseWordSentiments m (T.toLower word) sentences)
 
 wordInvariant :: Text -> Bool
-wordInvariant t = T.all isLetter t && T.all isLower t
+wordInvariant = T.all isLetter
 
 -- | Type alias for `[Text]`. Assumed to be a list of words containing only
 -- lowercase letters.
