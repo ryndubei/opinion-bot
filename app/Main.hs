@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
-import Control.Concurrent (killThread)
 import qualified Data.Text.IO as T
 import Discord
 import Discord.Types
@@ -18,13 +17,13 @@ main = do
   testServerId <- read <$> (readFile =<< getDataFileName ".secrets/guildid.secret")
   history <- loadHistory
 
-  (historyThreadId, reqChannel) <- spawnDataManager pushMessage history
+  reqChannel <- spawnDataManager pushMessage history
 
   err <- runDiscord $ def { discordToken = tok
                           , discordOnStart = startHandler
-                          , discordOnEnd = request reqChannel
+                          , discordOnEnd = putStrLn "Ending opinion-bot..."
+                                        >> request reqChannel
                                        >>= saveHistory 
-                                        >> killThread historyThreadId
                                         >> putStrLn "Ended"
                           , discordOnEvent = eventHandler testServerId reqChannel
                           , discordOnLog = \s -> T.hPutStrLn stderr s >> T.hPutStrLn stderr ""

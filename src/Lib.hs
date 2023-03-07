@@ -1,17 +1,13 @@
 module Lib (request, send, spawnDataManager, DataChannel) where
 
 import Control.Concurrent.Chan ( readChan, writeChan, Chan, newChan )
-import Control.Concurrent (ThreadId, getChanContents, forkIO)
-
--- TODO: may be a better idea to take over the current thread rather than
--- spawn a new thread
+import Control.Concurrent (getChanContents, forkIO)
 
 -- | Two-way channel to a data manager thread. Can either accept new data of
 -- type a or be requested to send back b.
 newtype DataChannel a b = DataChannel (Chan (Maybe a), Chan b)
 
--- | Request the current state of b from the data manager. Will freeze if
--- the request manager thread has been killed.
+-- | Request the current state of b from the data manager.
 request :: DataChannel a b -> IO b
 request (DataChannel (inChan, outChan)) = do
   writeChan inChan Nothing
@@ -24,12 +20,12 @@ send a (DataChannel (inChan, _)) = writeChan inChan (Just a)
 -- | Spawn a new manager for DataChannel. Takes data of type a and
 -- processes the held state of type b with the given function, and sends
 -- back the current state of b when requested.
-spawnDataManager :: (a -> b -> b) -> b -> IO (ThreadId, DataChannel a b)
+spawnDataManager :: (a -> b -> b) -> b -> IO (DataChannel a b)
 spawnDataManager f s0 = do
   inChan <- newChan :: IO (Chan (Maybe a))
   outChan <- newChan :: IO (Chan b)
-  threadId <- forkIO $ getChanContents inChan >>= iterateOnInput outChan s0
-  pure (threadId, DataChannel (inChan, outChan))
+  _ <- forkIO $ getChanContents inChan >>= iterateOnInput outChan s0
+  pure (DataChannel (inChan, outChan))
   where
     iterateOnInput _ _ [] = error "Channel message list cannot be empty"
     iterateOnInput outChan b (ma:mas) = 
