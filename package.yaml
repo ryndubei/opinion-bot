@@ -69,3 +69,6 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - opinion-bot
+    - hspec
+    - QuickCheck
+    - HUnit
