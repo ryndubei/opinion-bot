@@ -10,12 +10,12 @@ import qualified Discord.Requests as R
 import Control.Monad (void, when, forM_)
 import MessageHistory (History, oldestMessageId, fetchMessages)
 import Lib (DataChannel, send, request)
+import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import System.IO (stderr)
 import Control.Monad.IO.Class (liftIO)
 import Discord.Types
 import Data.Maybe (isNothing, fromJust, fromMaybe, isJust)
-import qualified Data.Text as T
 import Discord.Requests (MessageTiming (LatestMessages, BeforeMessage))
 import Data.List (find)
 import SentimentAnalysis (analyseRawMessages, wordInvariant)
@@ -108,7 +108,7 @@ analyse msgChannel = SlashCommand
                 [OptionDataValueUser {optionDataValueUser = u}] -> (Nothing, Just u)
                 _ -> (Nothing,Nothing)
               txts = fetchMessages history cid uid
-              reply = "Calculated sentiment for keyword " <> keyword 
+              reply = "Calculated sentiment for keyword " <> keyword
                 <> (if isJust cid then " in channel " <> displayChannel (fromJust cid) else "")
                 <> (if isJust uid then " by user " <> displayUser (fromJust uid) else "")
                 <> ": "
@@ -119,13 +119,13 @@ analyse msgChannel = SlashCommand
                       (interactionId intr)
                       (interactionToken intr)
                       (InteractionResponseChannelMessage $
-                        (interactionResponseMessageBasic (reply <> T.pack (showFFloat (Just 6) sentiment ""))) 
+                        (interactionResponseMessageBasic (reply <> T.pack (showFFloat (Just 6) sentiment "")))
                           { interactionResponseMessageAllowedMentions = Just (def {mentionUsers = False}) }
                       )
                 else void . restCall $ R.CreateInteractionResponse
                   (interactionId intr)
                   (interactionToken intr)
-                  (interactionResponseBasic 
+                  (interactionResponseBasic
                     "Invalid input: keyword must be letters only without spaces"
                   )
         _ -> echo "did not receive keyword for analyse"
@@ -138,19 +138,36 @@ eventHandler :: GuildId -> DataChannel Message History -> Event -> DiscordHandle
 eventHandler testServerId msgChannel = \case
   Ready _ _ _ _ _ _ (PartialApplication appId _) -> onReady mySlashCommands' appId testServerId
   InteractionCreate intr                         -> onInteractionCreate mySlashCommands' intr
-  MessageCreate msg                              -> echo ( "( "
-                                                        <> (T.pack . show . messageTimestamp $ msg)
-                                                        <> " ) "
-                                                        <> (userName . messageAuthor) msg
-                                                        <> ": "
-                                                        <> messageContent msg
-                                                        <> if (not . null . messageAttachments) msg then " [ATTACHMENT]" else ""
-                                                        <> if (not . null . messageEmbeds) msg then " [EMBED]" else ""
-                                                         )
+  MessageCreate msg                              -> echo (displayMessage msg)
                                                       >> liftIO (send msg msgChannel)
+  MessageUpdate cid msgid                        -> restCall (R.GetChannelMessage (cid,msgid))
+                                                      >>= \case
+                                                        Right msg -> do
+                                                          echo ("Message edited in channel " 
+                                                              <> displayChannel cid 
+                                                              <> ":\n\t" 
+                                                              <> displayMessage msg)
+                                                          liftIO (send msg msgChannel)
+                                                        Left err -> echo $
+                                                          "Failed to get message with id "
+                                                          <> T.pack (show msgid)
+                                                          <> " from channel "
+                                                          <> displayChannel cid
+                                                          <> ": "
+                                                          <> T.pack (show err)
   _                                              -> pure ()
   where
     mySlashCommands' = map (\f -> f msgChannel) mySlashCommands
+
+displayMessage :: Message -> Text
+displayMessage msg = "( "
+                  <> (T.pack . show . messageTimestamp $ msg)
+                  <> " ) "
+                  <> (userName . messageAuthor) msg
+                  <> ": "
+                  <> messageContent msg
+                  <> if (not . null . messageAttachments) msg then " [ATTACHMENT]" else ""
+                  <> if (not . null . messageEmbeds) msg then " [EMBED]" else ""
 
 onReady :: [SlashCommand] -> ApplicationId -> GuildId -> DiscordHandler ()
 onReady slashCmds appId testServerId = do
