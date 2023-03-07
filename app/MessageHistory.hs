@@ -18,6 +18,7 @@ import Data.Bifunctor (first, second)
 import qualified Data.ByteString.Lazy as BS
 import Data.Map (Map)
 import qualified Data.Map.Strict as M
+import qualified Data.Map.Merge.Strict as M
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Discord.Types
@@ -124,14 +125,16 @@ pushMessage msg (History history) = History $ M.insert (messageChannelId msg) ch
 
         , userMap =
             M.insertWith
-              ( \newMsg oldMsgs ->
-                  let [(msgId, msgContent)] = M.toList newMsg -- I am well aware that this is cursed, but I could not find a Data.Map function
-                   in M.insert msgId msgContent oldMsgs -- with signature :: (a -> b -> b) -> k -> a -> Map k b -> Map k b
-              )
+              combine
               ((userId . messageAuthor) msg)
               (M.fromList [(messageId msg, messageContent msg)])
               (userMap channelMessages)
         }
+
+-- | Combine the elements of two Maps, giving priority to values of the first
+-- map whenever there are two identical keys.
+combine :: Ord k => Map k v -> Map k v -> Map k v
+combine = M.merge M.preserveMissing' M.preserveMissing' (M.zipWithMatched (\_k x _y -> x))
 
 -- | Given a History, fetch all messages that match the optional parameters for
 -- Channel and User.
@@ -142,7 +145,9 @@ fetchMessages history@(History historyMap) mcid muser =
       let cmsgs = fetchChannelMessages history cid
        in case muser of
             Just user -> fetchUserMessages cmsgs user
+            -- if we don't have a specific user id we fetch messages from all users
             Nothing -> concatMap (fetchUserMessages cmsgs) (M.keys (userMap cmsgs))
+    -- if we don't have a specific channel id we fetch messages from all channel ids
     Nothing -> concatMap (\cid -> fetchMessages history (Just cid) muser) (M.keys historyMap)
 
 fetchChannelMessages :: History -> ChannelId -> ChannelMessages
