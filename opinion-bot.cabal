@@ -42,6 +42,7 @@ library
       base >=4.7 && <5
     , containers
     , text
+    , tokenize
   default-language: Haskell2010
 
 executable opinion-bot-exe
@@ -62,6 +63,7 @@ executable opinion-bot-exe
     , discord-haskell
     , opinion-bot
     , text
+    , tokenize
   default-language: Haskell2010
 
 test-suite opinion-bot-test
@@ -80,4 +82,5 @@ test-suite opinion-bot-test
     , hspec
     , opinion-bot
     , text
+    , tokenize
   default-language: Haskell2010

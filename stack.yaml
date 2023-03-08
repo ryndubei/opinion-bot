@@ -43,6 +43,7 @@ packages:
 extra-deps:
 - emoji-0.1.0.2
 - discord-haskell-1.15.3
+- tokenize-0.3.0
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

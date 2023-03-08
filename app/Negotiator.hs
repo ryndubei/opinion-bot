@@ -112,21 +112,20 @@ analyse msgChannel = SlashCommand
                 <> (if isJust cid then " in channel " <> displayChannel (fromJust cid) else "")
                 <> (if isJust uid then " by user " <> displayUser (fromJust uid) else "")
                 <> ": "
-           in if wordInvariant keyword
-                then liftIO (analyseRawMessages txts keyword)
-                  >>= \sentiment -> void . restCall $
-                    R.CreateInteractionResponse
-                      (interactionId intr)
-                      (interactionToken intr)
-                      (InteractionResponseChannelMessage $
-                        (interactionResponseMessageBasic (reply <> T.pack (showFFloat (Just 6) sentiment "")))
-                          { interactionResponseMessageAllowedMentions = Just (def {mentionUsers = False}) }
-                      )
-                else void . restCall $ R.CreateInteractionResponse
+           in case wordInvariant keyword of
+                Right _ -> liftIO (analyseRawMessages txts keyword) >>= \sentiment -> void . restCall $
+                  R.CreateInteractionResponse
+                    (interactionId intr)
+                    (interactionToken intr)
+                    (InteractionResponseChannelMessage $
+                      (interactionResponseMessageBasic (reply <> T.pack (showFFloat (Just 6) sentiment "")))
+                        { interactionResponseMessageAllowedMentions = Just (def {mentionUsers = False}) }
+                    )
+                Left err -> void . restCall $ R.CreateInteractionResponse
                   (interactionId intr)
                   (interactionToken intr)
                   (interactionResponseBasic
-                    "Invalid input: keyword must be letters only without spaces"
+                    ("Invalid input: " <> err)
                   )
         _ -> echo "did not receive keyword for analyse"
   }

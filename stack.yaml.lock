@@ -18,6 +18,13 @@ packages:
       size: 3241
   original:
     hackage: discord-haskell-1.15.3
+- completed:
+    hackage: tokenize-0.3.0@sha256:73e4e845359ff60e51d30f3c33b751ced1076fac5e6640243463795260172ee0,2256
+    pantry-tree:
+      sha256: 9d3349fd6c99072d48683d133d79bb421ac7ad99d365d41900d33edc5eeab727
+      size: 402
+  original:
+    hackage: tokenize-0.3.0
 snapshots:
 - completed:
     sha256: af5d667f6096e535b9c725a72cffe0f6c060e0568d9f9eeda04caee70d0d9d2d
