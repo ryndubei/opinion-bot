@@ -16,7 +16,7 @@ import System.IO (stderr)
 import Control.Monad.IO.Class (liftIO)
 import Discord.Types
 import Data.Maybe (isNothing, fromJust, fromMaybe, isJust)
-import Discord.Requests (MessageTiming (LatestMessages, BeforeMessage))
+import Discord.Requests (MessageTiming (LatestMessages, BeforeMessage), InteractionResponseRequest)
 import Data.List (find)
 import SentimentAnalysis (analyseRawMessages, wordInvariant)
 import Numeric (showFFloat)
@@ -33,12 +33,7 @@ ping :: DataChannel Message History -> SlashCommand
 ping _ = SlashCommand
   { name = "ping"
   , registration = createChatInput "ping" "responds pong"
-  , handler = \intr _options ->
-      void . restCall $
-        R.CreateInteractionResponse
-          (interactionId intr)
-          (interactionToken intr)
-          (interactionResponseBasic "pong")
+  , handler = \intr _options -> void . restCall $ standardInteractionResponse intr "pong"
   }
 
 importData :: DataChannel Message History -> SlashCommand
@@ -48,14 +43,11 @@ importData msgChannel = SlashCommand
   , handler = \intr _options -> do
       let cid = interactionChannelId intr
       when (isNothing cid) $ fail "Could not get origin channel of slash command"
-      void . restCall $
-        R.CreateInteractionResponse
-          (interactionId intr)
-          (interactionToken intr)
-          (interactionResponseBasic $ "Importing messages from " <> displayChannel (fromJust cid))
-      msgTiming <- maybe LatestMessages BeforeMessage . (`oldestMessageId` fromJust cid)
+      void . restCall . standardInteractionResponse intr $
+        ("Importing messages from " <> displayChannel (fromJust cid))
+      targetMessageTiming <- maybe LatestMessages BeforeMessage . (`oldestMessageId` fromJust cid)
         <$> (liftIO . request) msgChannel
-      report <- runImport msgTiming msgChannel (fromJust cid)
+      report <- runImport targetMessageTiming msgChannel (fromJust cid)
       echo report
       void . restCall $
         R.EditOriginalInteractionResponse
@@ -95,40 +87,46 @@ analyse msgChannel = SlashCommand
                              , OptionValueUser "user" Nothing "user to analyse" Nothing False
                              ]
         }
-
-  , handler = \intr options -> do
-      history <- liftIO $ request msgChannel
-      case options of
-        Just (OptionsDataValues ( OptionDataValueString {optionDataValueString = Right keyword}
-                                : os
-                                )) ->
-          let (cid,uid) = case os of
-                [OptionDataValueChannel {optionDataValueChannel = c}, OptionDataValueUser {optionDataValueUser = u}] -> (Just c, Just u)
-                [OptionDataValueChannel {optionDataValueChannel = c}, _] -> (Just c, Nothing)
-                [OptionDataValueUser {optionDataValueUser = u}] -> (Nothing, Just u)
-                _ -> (Nothing,Nothing)
-              txts = fetchMessages history cid uid
-              reply = "Calculated sentiment for keyword " <> keyword
-                <> (if isJust cid then " in channel " <> displayChannel (fromJust cid) else "")
-                <> (if isJust uid then " by user " <> displayUser (fromJust uid) else "")
-                <> ": "
-           in case wordInvariant keyword of
-                Right _ -> liftIO (analyseRawMessages txts keyword) >>= \sentiment -> void . restCall $
-                  R.CreateInteractionResponse
-                    (interactionId intr)
-                    (interactionToken intr)
-                    (InteractionResponseChannelMessage $
-                      (interactionResponseMessageBasic (reply <> T.pack (showFFloat (Just 6) sentiment "")))
-                        { interactionResponseMessageAllowedMentions = Just (def {mentionUsers = False}) }
-                    )
-                Left err -> void . restCall $ R.CreateInteractionResponse
-                  (interactionId intr)
-                  (interactionToken intr)
-                  (interactionResponseBasic
-                    ("Invalid input: " <> err)
-                  )
-        _ -> echo "did not receive keyword for analyse"
+  , handler = \intr options -> liftIO (request msgChannel) >>= \history ->
+      let options' = unwrapOptions options
+       in case options' of
+            Right (keyword, cid, uid) -> handleOptions intr history (keyword, cid, uid)
+            Left err -> echo err
   }
+  where
+    unwrapOptions :: Maybe OptionsData -> Either Text (Text, Maybe ChannelId, Maybe UserId)
+    unwrapOptions (Just (OptionsDataValues options)) =
+      let mkeyword = optionDataValueString <$> find (\o -> optionDataValueString o == Right "keyword") options
+          mcid = optionDataValueChannel <$> find (\o -> optionDataValueName o == "channel") options
+          muid = optionDataValueUser <$> find (\o -> optionDataValueName o == "user") options
+       in case mkeyword of
+        Just (Right keyword) -> pure (keyword, mcid, muid)
+        _ -> Left "did not receive keyword for analyse"
+    unwrapOptions _ = Left "did not receive appropriate options for analyse"
+
+    handleOptions :: Interaction -> History -> (Text, Maybe ChannelId, Maybe UserId) -> DiscordHandler ()
+    handleOptions intr history (keyword, cid, uid) =
+      let txts = fetchMessages history cid uid
+          reply x = "Calculated sentiment for keyword "
+            <> keyword
+            <> (if isJust cid then " in channel " <> displayChannel (fromJust cid) else "")
+            <> (if isJust uid then " by user " <> displayUser (fromJust uid) else "")
+            <> ": "
+            <> T.pack (showFFloat (Just 6) x "")
+       in case wordInvariant keyword of
+            Right _ -> liftIO (analyseRawMessages txts keyword) >>= \sentiment ->
+              void . restCall $ standardInteractionResponse intr (reply sentiment)
+            Left err -> void . restCall $ standardInteractionResponse intr ("Invalid input: " <> err)
+
+standardInteractionResponse :: Interaction -> Text -> InteractionResponseRequest ()
+standardInteractionResponse intr reply =
+  R.CreateInteractionResponse
+    (interactionId intr)
+    (interactionToken intr)
+    (InteractionResponseChannelMessage $
+      (interactionResponseMessageBasic reply)
+        { interactionResponseMessageAllowedMentions = Just (def {mentionEveryone = False, mentionUsers = False})}
+    )
 
 startHandler :: DiscordHandler ()
 startHandler = echo "Started opinion-bot"
@@ -142,9 +140,9 @@ eventHandler testServerId msgChannel = \case
   MessageUpdate cid msgid                        -> restCall (R.GetChannelMessage (cid,msgid))
                                                       >>= \case
                                                         Right msg -> do
-                                                          echo ("Message edited in channel " 
-                                                              <> displayChannel cid 
-                                                              <> ":\n\t" 
+                                                          echo ("Message edited in channel "
+                                                              <> displayChannel cid
+                                                              <> ":\n\t"
                                                               <> displayMessage msg)
                                                           liftIO (send msg msgChannel)
                                                         Left err -> echo $
