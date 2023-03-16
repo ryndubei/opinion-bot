@@ -48,8 +48,10 @@ library
 executable opinion-bot-exe
   main-is: Main.hs
   other-modules:
+      Commands
       MessageHistory
       Negotiator
+      Utils
       Paths_opinion_bot
   hs-source-dirs:
       app
