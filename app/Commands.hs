@@ -87,8 +87,8 @@ analyse msgChannel = SlashCommand
   }
   where
     unwrapOptions :: Maybe OptionsData -> Either Text (Text, Maybe ChannelId, Maybe UserId)
-    unwrapOptions (Just (OptionsDataValues options)) =
-      let mkeyword = optionDataValueString <$> find (\o -> optionDataValueString o == Right "keyword") options
+    unwrapOptions (Just (OptionsDataValues options)) = traceShow options $
+      let mkeyword = optionDataValueString <$> find (\o -> optionDataValueName o == "keyword") options
           mcid = optionDataValueChannel <$> find (\o -> optionDataValueName o == "channel") options
           muid = optionDataValueUser <$> find (\o -> optionDataValueName o == "user") options
        in case mkeyword of
