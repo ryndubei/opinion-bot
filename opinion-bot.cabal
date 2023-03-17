@@ -1,4 +1,4 @@
-cabal-version: 1.12
+cabal-version: 2.2
 
 -- This file has been generated from package.yaml by hpack version 0.35.1.
 --
@@ -12,7 +12,7 @@ bug-reports:    https://github.com/ryndubei/opinion-bot/issues
 author:         ryndubei
 maintainer:     114586905+ryndubei@users.noreply.github.com
 copyright:      2023 ryndubei
-license:        BSD3
+license:        AGPL-3.0-or-later
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
@@ -35,6 +35,8 @@ library
       SentimentAnalysis.SentimentData
   other-modules:
       Paths_opinion_bot
+  autogen-modules:
+      Paths_opinion_bot
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -haddock
@@ -52,6 +54,8 @@ executable opinion-bot-exe
       MessageHistory
       Negotiator
       Utils
+      Paths_opinion_bot
+  autogen-modules:
       Paths_opinion_bot
   hs-source-dirs:
       app
@@ -73,6 +77,8 @@ test-suite opinion-bot-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Paths_opinion_bot
+  autogen-modules:
       Paths_opinion_bot
   hs-source-dirs:
       test

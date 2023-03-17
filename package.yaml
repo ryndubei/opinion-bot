@@ -1,7 +1,7 @@
 name:                opinion-bot
 version:             0.1.0.0
 github:              "ryndubei/opinion-bot"
-license:             BSD3
+license:             AGPL-3.0-or-later
 author:              "ryndubei"
 maintainer:          "114586905+ryndubei@users.noreply.github.com"
 copyright:           "2023 ryndubei"
