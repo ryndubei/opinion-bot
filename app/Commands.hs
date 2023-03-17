@@ -41,7 +41,7 @@ importData msgChannel = SlashCommand
   , handler = \intr _options -> do
       let cid = interactionChannelId intr
       when (isNothing cid) $ fail "Could not get origin channel of slash command"
-      void . restCall . standardInteractionResponse intr $
+      void . restCall . ephermeralInteractionResponse intr $
         ("Importing messages from " <> displayChannel (fromJust cid))
       targetMessageTiming <- maybe LatestMessages BeforeMessage . (`oldestMessageId` fromJust cid)
         <$> (liftIO . request) msgChannel
@@ -51,7 +51,7 @@ importData msgChannel = SlashCommand
         R.EditOriginalInteractionResponse
           (interactionApplicationId intr)
           (interactionToken intr)
-          (interactionResponseMessageBasic report)
+          (ephermeralMessage report)
   }
 
 runImport :: MessageTiming -> DataChannel Message History -> ChannelId -> DiscordHandler Text
@@ -108,4 +108,4 @@ analyse msgChannel = SlashCommand
        in case wordInvariant keyword of
             Right _ -> liftIO (analyseRawMessages txts keyword) >>= \sentiment ->
               void . restCall $ standardInteractionResponse intr (reply sentiment)
-            Left err -> void . restCall $ standardInteractionResponse intr ("Invalid input: " <> err)
+            Left err -> void . restCall $ ephermeralInteractionResponse intr ("Invalid input: " <> err)

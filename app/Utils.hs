@@ -26,7 +26,21 @@ standardInteractionResponse intr reply =
   R.CreateInteractionResponse
     (interactionId intr)
     (interactionToken intr)
-    (InteractionResponseChannelMessage $
-      (interactionResponseMessageBasic reply)
-        { interactionResponseMessageAllowedMentions = Just (def {mentionEveryone = False, mentionUsers = False})}
-    )
+    (InteractionResponseChannelMessage (standardMessage reply))
+
+standardMessage :: Text -> InteractionResponseMessage
+standardMessage reply = (interactionResponseMessageBasic reply) 
+  { interactionResponseMessageAllowedMentions = 
+    Just (def {mentionEveryone = False, mentionUsers = False})}
+
+ephermeralInteractionResponse :: Interaction -> Text -> InteractionResponseRequest ()
+ephermeralInteractionResponse intr reply =
+  R.CreateInteractionResponse
+    (interactionId intr)
+    (interactionToken intr)
+    (InteractionResponseChannelMessage (ephermeralMessage reply))
+
+ephermeralMessage :: Text -> InteractionResponseMessage
+ephermeralMessage reply = (interactionResponseMessageBasic reply) 
+  { interactionResponseMessageFlags = 
+    Just (InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral])}
