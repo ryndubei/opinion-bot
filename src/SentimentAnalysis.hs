@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module SentimentAnalysis ( analyseRawMessages, wordInvariant ) where
 
 import Data.Text (Text)
@@ -21,12 +22,14 @@ import Data.Either (isRight)
 analyseRawMessages :: [Text] -> Text -> IO Double
 analyseRawMessages texts word = getSentimentData >>= \m ->
   let sentences = map toSentence texts
-   in pure (analyseWordSentiments m (T.toLower word) sentences)
+   in pure (analyseWordSentiments m (head (toSentence word)) sentences)
 
 -- | Returns Right () when an input word is fine, otherwise returns
 -- Left with an explanation.
 wordInvariant :: Text -> Either Text ()
-wordInvariant = const (Right ()) -- no restrictions on input word for now
+wordInvariant word
+  | (length . toSentence) word /= 1 = Left "Keyword must not contain internal whitespace"
+  | otherwise = Right ()
 
 -- | Type alias for `[Text]`. Assumed to be a list of words containing only
 -- lowercase letters.
