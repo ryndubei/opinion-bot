@@ -18,7 +18,7 @@ import MessageHistory (History, fetchMessages, oldestMessageId)
 import Numeric (showFFloat)
 import SentimentAnalysis (analyseRawMessages, wordInvariant)
 import Utils
-import System.Random ( StdGen, Random(randomR), initStdGen )
+import System.Random ( StdGen, randomR, randomIO, mkStdGen)
 
 data SlashCommand = SlashCommand
   { name :: Text
@@ -111,7 +111,7 @@ something msgChannel = SlashCommand
   { name = "something"
   , registration = createChatInput "something" "says something"
   , handler = \intr _options -> liftIO (request msgChannel) >>= \history -> do
-      stdGen <- liftIO initStdGen -- TODO: maybe use a DataChannel that manages StdGen
+      stdGen <- mkStdGen <$> liftIO randomIO -- TODO: maybe use a DataChannel that manages StdGen
       let txt = getRandomMessage history stdGen
       void . restCall $ standardInteractionResponse intr txt
   }

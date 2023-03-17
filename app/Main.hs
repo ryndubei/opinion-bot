@@ -8,12 +8,12 @@ import Lib (request, spawnDataManager)
 import MessageHistory (loadHistory, pushMessage, saveHistory)
 import Negotiator (eventHandler, startHandler)
 import Paths_opinion_bot (getDataFileName)
-import System.IO (readFile', stderr)
+import System.IO (stderr)
 
 main :: IO ()
 main = do
   tok <- T.readFile =<< getDataFileName ".secrets/auth-token.secret"
-  testServerId <- read <$> (readFile' =<< getDataFileName ".secrets/guildid.secret")
+  testServerId <- read <$> (readFile =<< getDataFileName ".secrets/guildid.secret")
   history <- loadHistory
 
   reqChannel <- spawnDataManager pushMessage history
