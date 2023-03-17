@@ -28,7 +28,7 @@ import Discord.Types
   , userId
   , UserId, UTCTime
   )
-import System.Directory (getXdgDirectory, XdgDirectory(XdgCache) )
+import System.Directory (getXdgDirectory, XdgDirectory(XdgCache), createDirectoryIfMissing )
 import System.IO (hPutStrLn, stderr)
 
 -- | A store of messages in channels by users who posted them.
@@ -41,8 +41,8 @@ getHistoryLocation :: IO FilePath
 getHistoryLocation = getXdgDirectory XdgCache "opinion-bot-history.json"
 
 saveHistory :: History -> IO ()
-saveHistory history = getHistoryLocation >>= \path -> 
-  BS.writeFile path (encode history)
+saveHistory history = getHistoryLocation >>= \path ->
+  createDirectoryIfMissing True path >> BS.writeFile path (encode history)
 
 loadHistory :: IO History
 loadHistory = do
