@@ -59,6 +59,7 @@ executables:
     - aeson
     - directory
     - bytestring
+    - random
 
 tests:
   opinion-bot-test:

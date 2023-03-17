@@ -18,6 +18,7 @@ import MessageHistory (History, fetchMessages, oldestMessageId)
 import Numeric (showFFloat)
 import SentimentAnalysis (analyseRawMessages, wordInvariant)
 import Utils
+import System.Random ( StdGen, Random(randomR), initStdGen )
 
 data SlashCommand = SlashCommand
   { name :: Text
@@ -25,14 +26,7 @@ data SlashCommand = SlashCommand
   , handler :: Interaction -> Maybe OptionsData -> DiscordHandler ()}
 
 mySlashCommands :: [DataChannel Message History -> SlashCommand]
-mySlashCommands = [ping, importData, analyse]
-
-ping :: DataChannel Message History -> SlashCommand
-ping _ = SlashCommand
-  { name = "ping"
-  , registration = createChatInput "ping" "responds pong"
-  , handler = \intr _options -> void . restCall $ standardInteractionResponse intr "pong"
-  }
+mySlashCommands = [importData, analyse, something]
 
 importData :: DataChannel Message History -> SlashCommand
 importData msgChannel = SlashCommand
@@ -87,7 +81,7 @@ analyse msgChannel = SlashCommand
   }
   where
     unwrapOptions :: Maybe OptionsData -> Either Text (Text, Maybe ChannelId, Maybe UserId)
-    unwrapOptions (Just (OptionsDataValues options)) = traceShow options $
+    unwrapOptions (Just (OptionsDataValues options)) =
       let mkeyword = optionDataValueString <$> find (\o -> optionDataValueName o == "keyword") options
           mcid = optionDataValueChannel <$> find (\o -> optionDataValueName o == "channel") options
           muid = optionDataValueUser <$> find (\o -> optionDataValueName o == "user") options
@@ -109,3 +103,24 @@ analyse msgChannel = SlashCommand
             Right _ -> liftIO (analyseRawMessages txts keyword) >>= \sentiment ->
               void . restCall $ standardInteractionResponse intr (reply sentiment)
             Left err -> void . restCall $ ephermeralInteractionResponse intr ("Invalid input: " <> err)
+
+something :: DataChannel Message History -> SlashCommand
+-- TODO: wrap DataChannel Message History as part of some Record, so that more slash command
+-- creator parameters can be added
+something msgChannel = SlashCommand
+  { name = "something"
+  , registration = createChatInput "something" "says something"
+  , handler = \intr _options -> liftIO (request msgChannel) >>= \history -> do
+      stdGen <- liftIO initStdGen -- TODO: maybe use a DataChannel that manages StdGen
+      let txt = getRandomMessage history stdGen
+      void . restCall $ standardInteractionResponse intr txt
+  }
+  where
+    -- TODO: make it show the original poster of the message, for potential hilarity
+    getRandomMessage :: History -> StdGen -> Text
+    getRandomMessage history stdgen = 
+      let txts = fetchMessages history Nothing Nothing 
+          txt = txts!!fst (randomR (0,length txts - 1) stdgen)
+       in if null txts
+        then "I don't have anything to say"
+        else txt
