@@ -9,6 +9,8 @@ module MessageHistory
   , oldestMessageId 
   , saveHistory
   , loadHistory
+  , fetchChannelIds
+  , fetchUserIds
   ) 
 where
 
@@ -149,6 +151,24 @@ fetchMessages history@(History historyMap) mcid muser =
             Nothing -> concatMap (fetchUserMessages cmsgs) (M.keys (userMap cmsgs))
     -- if we don't have a specific channel id we fetch messages from all channel ids
     Nothing -> concatMap (\cid -> fetchMessages history (Just cid) muser) (M.keys historyMap)
+
+-- | Given a History, fetch all UserIds recorded there, optionally in a particular channel.
+fetchUserIds :: History -> Maybe ChannelId -> [UserId]
+fetchUserIds history@(History historyMap) mcid =
+  case mcid of
+    Just cid ->
+      let cmsgs = fetchChannelMessages history cid
+       in M.keys (userMap cmsgs)
+    Nothing -> concatMap (M.keys . userMap . fetchChannelMessages history) (M.keys historyMap)
+
+-- | Given a History, fetch all ChannelIds recorded there, optionally just those containing 
+-- messages from a particular user.
+fetchChannelIds :: History -> Maybe UserId -> [ChannelId]
+fetchChannelIds history@(History historyMap) muser =
+  case muser of
+    Just user -> filter (elem user . M.keys . userMap . fetchChannelMessages history)
+                        . M.keys $ historyMap
+    Nothing -> M.keys historyMap
 
 fetchChannelMessages :: History -> ChannelId -> ChannelMessages
 fetchChannelMessages (History history) cid = fromMaybe defaultChannelMessages $ cid `M.lookup` history
