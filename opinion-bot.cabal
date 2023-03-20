@@ -70,6 +70,7 @@ executable opinion-bot-exe
     , containers
     , directory
     , discord-haskell
+    , filepath
     , opinion-bot
     , random
     , text
