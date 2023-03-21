@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module SentimentAnalysis ( analyseRawMessages, wordInvariant ) where
+module SentimentAnalysis ( analyseRawMessages, wordInvariant, analyseRawMessage ) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -11,18 +11,22 @@ import NLP.Tokenize.Text
 
 import SentimentAnalysis.SentimentData 
   ( SentimentData
-  , getSentimentData
   , lookupSentiment )
 import Control.Monad ((>=>))
 import Data.Either (isRight)
 
 -- | Given an unprocessed list of Texts and a target word, find the
--- average sentiment of the texts containing that word as a value
--- between -1 and 1.
-analyseRawMessages :: [Text] -> Text -> IO Double
-analyseRawMessages texts word = getSentimentData >>= \m ->
+-- average sentiment of the texts containing that word as a double.
+analyseRawMessages :: SentimentData -> [Text] -> Text -> Double
+analyseRawMessages sentimentData texts word =
   let sentences = map toSentence texts
-   in pure (analyseWordSentiments m (head (toSentence word)) sentences)
+   in analyseWordSentiments sentimentData (head (toSentence word)) sentences
+
+-- | Given a single unprocessed Text, get its sentiment as a double.
+analyseRawMessage :: SentimentData -> Text -> Double
+analyseRawMessage sentimentData text =
+  let sentence = toSentence text
+   in analyseSentiment sentimentData sentence
 
 -- | Returns Right () when an input word is fine, otherwise returns
 -- Left with an explanation.
@@ -61,20 +65,17 @@ analyseWordSentiments sentimentMap word sentences =
         $ sentences
    in analyseSentiments sentimentMap sentences'
 
--- | Return the overall positivity/negativity of a list of sentences
--- represented as a value between -1 and 1.
+-- | Return the average sentiment of a list of sentences
 analyseSentiments :: SentimentData -> [Sentence] -> Double
 analyseSentiments sentimentMap sentences =
   let sentiments = map (analyseSentiment sentimentMap) sentences
    in average sentiments
 
--- | Return the positivity/negativity of a single sentence 
--- as a value between -1 and 1.
+-- | Return the sentiment of a single sentence 
 analyseSentiment :: SentimentData -> Sentence -> Double
 analyseSentiment sentimentMap sentence =
-  let values = filter (/=0) $ 
-        map (`lookupSentiment` sentimentMap) sentence
-   in average values
+  let values = map (`lookupSentiment` sentimentMap) sentence
+   in sum values
 
 average :: (Foldable t, Fractional a) => t a -> a
 average xs 

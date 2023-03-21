@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
+{-# LANGUAGE TupleSections #-}
 module Commands (mySlashCommands, SlashCommand (..)) where
 
-import Control.Monad (void, when)
+import Control.Monad (void, when, forM_)
 import Control.Monad.IO.Class (liftIO)
-import Data.List (find)
+import Data.List (find, sortOn)
 import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -14,9 +15,10 @@ import Discord.Requests (MessageTiming (BeforeMessage, LatestMessages))
 import qualified Discord.Requests as R
 import Discord.Types
 import Lib (DataChannel, request, send)
-import MessageHistory (History, fetchMessages, oldestMessageId)
+import MessageHistory (History, fetchMessages, oldestMessageId, fetchUserIds)
 import Numeric (showFFloat)
-import SentimentAnalysis (analyseRawMessages, wordInvariant)
+import SentimentAnalysis (analyseRawMessages, wordInvariant, analyseRawMessage)
+import SentimentAnalysis.SentimentData (getSentimentData)
 import Utils
 import System.Random ( StdGen, randomR, randomIO, mkStdGen)
 
@@ -26,7 +28,7 @@ data SlashCommand = SlashCommand
   , handler :: Interaction -> Maybe OptionsData -> DiscordHandler ()}
 
 mySlashCommands :: [DataChannel Message History -> SlashCommand]
-mySlashCommands = [importData, analyse, something]
+mySlashCommands = [importData, analyse, something, top10]
 
 importData :: DataChannel Message History -> SlashCommand
 importData msgChannel = SlashCommand
@@ -100,7 +102,9 @@ analyse msgChannel = SlashCommand
             <> ": "
             <> T.pack (showFFloat (Just 6) x "")
        in case wordInvariant keyword of
-            Right _ -> liftIO (analyseRawMessages txts keyword) >>= \sentiment ->
+            Right _ -> do
+              analyseMessages <- analyseRawMessages <$> liftIO getSentimentData
+              let sentiment = analyseMessages txts keyword
               void . restCall $ standardInteractionResponse intr (reply sentiment)
             Left err -> void . restCall $ ephermeralInteractionResponse intr ("Invalid input: " <> err)
 
@@ -116,11 +120,37 @@ something msgChannel = SlashCommand
       void . restCall $ standardInteractionResponse intr txt
   }
   where
-    -- TODO: make it show the original poster of the message, for potential hilarity
     getRandomMessage :: History -> StdGen -> Text
-    getRandomMessage history stdgen = 
-      let txts = fetchMessages history Nothing Nothing 
+    getRandomMessage history stdgen =
+      let txts = fetchMessages history Nothing Nothing
           txt = txts!!fst (randomR (0,length txts - 1) stdgen)
        in if null txts
         then "I don't have anything to say"
         else txt
+
+top10 :: DataChannel Message History -> SlashCommand
+top10 msgChannel = SlashCommand
+  { name = "topten"
+  , registration = createChatInput "topten" "top 10 best messages on the server"
+  , handler = \intr _options -> liftIO (request msgChannel) >>= \history -> do
+      analyseMessage <- analyseRawMessage <$> liftIO getSentimentData
+      void . restCall $ ephermeralInteractionResponse intr "Calculating top 10 messages..."
+      let users = fetchUserIds history Nothing
+          userTxts = map (\u -> (u, fetchMessages history Nothing (Just u))) users
+          userTxts' = concatMap (\(u, ts) -> map (u,) ts) userTxts
+          top10Messages = take 10 $ sortOn (analyseMessage . snd) userTxts'
+          replies = zipWith ((<>) . (<> ". ") . T.pack . show)
+                                      ([1..] :: [Int])
+                                      (map (\(u, t) -> displayUser u <> ": " <> t) top10Messages)
+          replies' = map (T.take 2000) replies
+      void . restCall $ followup intr "Top 10 messages:"
+      forM_ replies' $ \reply -> do
+        err <- restCall $ followup intr reply
+        echo ((T.pack . show) err)
+  }
+  where
+    followup intr reply = 
+      R.CreateFollowupInteractionMessage 
+        (interactionApplicationId intr) 
+        (interactionToken intr) 
+        (standardMessage reply)
