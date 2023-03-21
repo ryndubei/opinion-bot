@@ -57,12 +57,11 @@ runImport msgTiming msgChannel cid = do
   case mmsgs of
     Left e -> (pure . T.pack) ("Error while importing messages: " ++ show e)
     Right msgs ->
-      if null msgs
+      let msgs' = filter (\m -> not (userIsBot (messageAuthor m) || userIsWebhook (messageAuthor m))) msgs
+      in if null msgs'
         then pure ("Done importing messages from " <> displayChannel cid )
         else do
-          forM_ msgs $ \msg ->
-            unless (userIsBot (messageAuthor msg) || userIsWebhook (messageAuthor msg)) 
-              $ liftIO (send msg msgChannel)
+          liftIO $ mapM_ (`send` msgChannel) msgs'
           oldestMsg <- fromMaybe (error "Oldest message ID should exist at this point")
             . (`oldestMessageId` cid) <$> (liftIO . request) msgChannel
           runImport (BeforeMessage oldestMsg) msgChannel cid
@@ -145,7 +144,10 @@ top10 msgChannel = SlashCommand
                                       ([1..] :: [Int])
                                       (map (\(u, t) -> displayUser u <> ": " <> t) top10Messages)
           replies' = map (T.take 2000) replies
-      void . restCall $ followup intr "Top 10 messages:"
+      void . restCall $ R.EditOriginalInteractionResponse 
+        (interactionApplicationId intr) 
+        (interactionToken intr)
+        (standardMessage "Top 10 messages:")
       forM_ replies' $ \reply -> do
         err <- restCall $ followup intr reply
         echo ((T.pack . show) err)
