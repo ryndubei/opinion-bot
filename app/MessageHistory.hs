@@ -33,6 +33,7 @@ import Discord.Types
 import System.Directory (getXdgDirectory, XdgDirectory(XdgCache), createDirectoryIfMissing )
 import System.IO (hPutStrLn, stderr)
 import System.FilePath (dropFileName)
+import Data.List (nub)
 
 -- | A store of messages in channels by users who posted them.
 newtype History = History (Map ChannelId ChannelMessages) deriving (Show)
@@ -161,7 +162,7 @@ fetchUserIds history@(History historyMap) mcid =
     Just cid ->
       let cmsgs = fetchChannelMessages history cid
        in M.keys (userMap cmsgs)
-    Nothing -> concatMap (M.keys . userMap . fetchChannelMessages history) (M.keys historyMap)
+    Nothing -> nub $ concatMap (M.keys . userMap . fetchChannelMessages history) (M.keys historyMap)
 
 -- | Given a History, fetch all ChannelIds recorded there, optionally just those containing 
 -- messages from a particular user.
