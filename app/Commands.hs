@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 module Commands (mySlashCommands, SlashCommand (..)) where
 
-import Control.Monad (void, when, forM_)
+import Control.Monad (void, when, forM_, unless)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (find, sortOn)
 import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
@@ -60,7 +60,9 @@ runImport msgTiming msgChannel cid = do
       if null msgs
         then pure ("Done importing messages from " <> displayChannel cid )
         else do
-          mapM_ (liftIO . (`send` msgChannel)) msgs
+          forM_ msgs $ \msg ->
+            unless (userIsBot (messageAuthor msg) || userIsWebhook (messageAuthor msg)) 
+              $ liftIO (send msg msgChannel)
           oldestMsg <- fromMaybe (error "Oldest message ID should exist at this point")
             . (`oldestMessageId` cid) <$> (liftIO . request) msgChannel
           runImport (BeforeMessage oldestMsg) msgChannel cid

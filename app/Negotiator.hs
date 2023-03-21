@@ -3,7 +3,7 @@
 module Negotiator (startHandler, eventHandler) where
 
 import Commands
-import Control.Monad (forM_)
+import Control.Monad (forM_, unless)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (find)
 import Data.Text (Text)
@@ -24,7 +24,10 @@ eventHandler testServerId msgChannel = \case
   Ready _ _ _ _ _ _ (PartialApplication appId _) -> onReady mySlashCommands' appId testServerId
   InteractionCreate intr                         -> onInteractionCreate mySlashCommands' intr
   MessageCreate msg                              -> echo (displayMessage msg)
-                                                      >> liftIO (send msg msgChannel)
+                                                      >> liftIO 
+                                                          (unless 
+                                                          (userIsBot (messageAuthor msg) || userIsWebhook (messageAuthor msg)) 
+                                                          (send msg msgChannel))
   MessageUpdate cid msgid                        -> restCall (R.GetChannelMessage (cid,msgid))
                                                       >>= \case
                                                         Right msg -> do
