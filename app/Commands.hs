@@ -4,10 +4,10 @@
 {-# LANGUAGE NamedFieldPuns #-}
 module Commands (mySlashCommands, SlashCommand (..), Constants(..)) where
 
-import Control.Monad (void, when, forM_, unless)
+import Control.Monad (void, when, forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (find, sortOn)
-import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
+import Data.Maybe (fromJust, isJust, isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Discord
@@ -30,11 +30,11 @@ data SlashCommand = SlashCommand
 
 data Constants = Constants
   { msgChannel :: DataChannel Message History
-  , chatbotMode :: DataChannel () Bool
+  , chatbotMode :: DataChannel () Bool -- TODO: use TVar from stm
   }
 
 mySlashCommands :: [Constants -> SlashCommand]
-mySlashCommands = [importData, analyse, something, top10]
+mySlashCommands = [importData, analyse, something, top10, chatbot]
 
 importData :: Constants -> SlashCommand
 importData Constants{msgChannel} = SlashCommand
@@ -62,15 +62,17 @@ runImport msgTiming msgChannel cid = do
   mmsgs <- restCall $ R.GetChannelMessages cid (100, msgTiming)
   case mmsgs of
     Left e -> (pure . T.pack) ("Error while importing messages: " ++ show e)
-    Right msgs ->
-      let msgs' = filter (\m -> not (userIsBot (messageAuthor m) || userIsWebhook (messageAuthor m))) msgs
-      in if null msgs'
+    Right msgs -> do
+      let msgs' = filter (\m -> not 
+             ( userIsBot (messageAuthor m) 
+            || userIsWebhook (messageAuthor m) 
+            || T.null (messageContent m))) msgs
+      liftIO $ mapM_ (`send` msgChannel) msgs'
+      if null msgs
         then pure ("Done importing messages from " <> displayChannel cid )
-        else do
-          liftIO $ mapM_ (`send` msgChannel) msgs'
-          oldestMsg <- fromMaybe (error "Oldest message ID should exist at this point")
-            . (`oldestMessageId` cid) <$> (liftIO . request) msgChannel
-          runImport (BeforeMessage oldestMsg) msgChannel cid
+        else 
+          let oldestMsg = head $ sortOn messageTimestamp msgs  
+           in runImport (BeforeMessage (messageId oldestMsg)) msgChannel cid
 
 analyse :: Constants -> SlashCommand
 analyse Constants{msgChannel} = SlashCommand
@@ -139,19 +141,16 @@ top10 Constants{msgChannel} = SlashCommand
   , registration = createChatInput "topten" "top 10 best messages on the server"
   , handler = \intr _options -> liftIO (request msgChannel) >>= \history -> do
       analyseMessage <- analyseRawMessage <$> liftIO getSentimentData
-      void . restCall $ ephermeralInteractionResponse intr "Calculating top 10 messages..."
+      void . restCall $ standardInteractionResponse intr "Top 10 messages:"
       let users = fetchUserIds history Nothing
           userTxts = map (\u -> (u, fetchMessages history Nothing (Just u))) users
           userTxts' = concatMap (\(u, ts) -> map (u,) ts) userTxts
+          -- get the 10 messages with the lowest calculated sentiment
           top10Messages = take 10 $ sortOn (analyseMessage . snd) userTxts'
           replies = zipWith ((<>) . (<> ". ") . T.pack . show)
                                       ([1..] :: [Int])
                                       (map (\(u, t) -> displayUser u <> ": " <> t) top10Messages)
           replies' = map (T.take 2000) replies
-      void . restCall $ R.EditOriginalInteractionResponse 
-        (interactionApplicationId intr) 
-        (interactionToken intr)
-        (standardMessage "Top 10 messages:")
       forM_ replies' $ \reply -> do
         err <- restCall $ followup intr reply
         echo ((T.pack . show) err)
@@ -161,4 +160,16 @@ top10 Constants{msgChannel} = SlashCommand
       R.CreateFollowupInteractionMessage 
         (interactionApplicationId intr) 
         (interactionToken intr) 
-        (standardMessage reply)
+        (standardMessage reply) 
+
+chatbot :: Constants -> SlashCommand
+chatbot Constants{chatbotMode} = SlashCommand 
+  { name = "chatbot"
+  , registration = createChatInput "chatbot" "toggle chat with the bot"
+  , handler = \intr _options -> do
+      chatbotMode' <- liftIO $ request chatbotMode
+      liftIO $ send () chatbotMode
+      if chatbotMode'
+        then void . restCall $ ephermeralInteractionResponse intr "Chatbot mode disabled."
+        else void . restCall $ ephermeralInteractionResponse intr "Chatbot mode enabled."
+  }

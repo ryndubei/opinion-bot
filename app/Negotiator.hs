@@ -4,7 +4,7 @@
 module Negotiator (startHandler, eventHandler) where
 
 import Commands
-import Control.Monad (forM_, unless)
+import Control.Monad (forM_, unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (find)
 import Data.Text (Text)
@@ -13,22 +13,27 @@ import Discord
 import Discord.Interactions
 import qualified Discord.Requests as R
 import Discord.Types
-import Lib (DataChannel, send, spawnDataManager)
-import MessageHistory (History)
+import Lib (send, request)
 import Utils
+import Data.Bool (bool)
+import MessageHistory (fetchMessages)
+import SentimentAnalysis (analyseRawMessage)
+import SentimentAnalysis.SentimentData (getSentimentData)
+import System.Random (mkStdGen)
+import Data.Bifunctor (second)
+import Data.List.NonEmpty (nonEmpty)
 
 startHandler :: DiscordHandler ()
 startHandler = echo "Started opinion-bot"
 
 eventHandler :: GuildId -> Constants -> Event -> DiscordHandler ()
-eventHandler testServerId constants@Constants{msgChannel} = \case
+eventHandler testServerId constants@Constants{msgChannel, chatbotMode} = \case
   Ready _ _ _ _ _ _ (PartialApplication appId _) -> onReady mySlashCommands' appId testServerId
   InteractionCreate intr                         -> onInteractionCreate mySlashCommands' intr
   MessageCreate msg                              -> echo (displayMessage msg)
-                                                      >> liftIO 
-                                                          (unless 
-                                                          (userIsBot (messageAuthor msg) || userIsWebhook (messageAuthor msg)) 
-                                                          (send msg msgChannel))
+                                                    >> liftIO (request chatbotMode)
+                                                    >>= bool (pure ()) (chatbotRespond msg)
+                                                    >> sendMessage msg
   MessageUpdate cid msgid                        -> restCall (R.GetChannelMessage (cid,msgid))
                                                       >>= \case
                                                         Right msg -> do
@@ -36,7 +41,7 @@ eventHandler testServerId constants@Constants{msgChannel} = \case
                                                               <> displayChannel cid
                                                               <> ":\n\t"
                                                               <> displayMessage msg)
-                                                          liftIO (send msg msgChannel)
+                                                          sendMessage msg
                                                         Left err -> echo $
                                                           "Failed to get message with id "
                                                           <> T.pack (show msgid)
@@ -47,6 +52,28 @@ eventHandler testServerId constants@Constants{msgChannel} = \case
   _                                              -> pure ()
   where
     mySlashCommands' = map (\f -> f constants) mySlashCommands
+    sendMessage msg = liftIO (unless (shouldIgnore msg)
+                             (send msg msgChannel))
+    shouldIgnore msg = userIsBot (messageAuthor msg)
+      || userIsWebhook (messageAuthor msg)
+      || T.null (messageContent msg)
+    -- Randomly chooses a message weighted by the closeness to the 
+    -- sentiment of the given message, and replies with that message.
+    chatbotRespond :: Message -> DiscordHandler ()
+    chatbotRespond msg = unless (shouldIgnore msg) $ do
+      history <- liftIO (request msgChannel)
+      sentimentData <- liftIO getSentimentData
+      let stdGen = mkStdGen . round . utctDayTime . messageTimestamp $ msg
+          sentiment = analyseRawMessage sentimentData
+          targetSentiment = sentiment (messageContent msg)
+          messages = fetchMessages history Nothing Nothing
+          messages' = map (
+            second ((^ 1000) . (1 /)) 
+            . (\(t,s) -> if s == 0 then (t,0.1) else (t,s)) 
+            . (\t -> (t,abs (sentiment t - targetSentiment)))
+            ) messages
+          reply = maybe "I don't have anything to say" (drawWeightedRandom stdGen) (nonEmpty messages')
+      void . restCall $ R.CreateMessage (messageChannelId msg) reply
 
 displayMessage :: Message -> Text
 displayMessage msg = "( "
