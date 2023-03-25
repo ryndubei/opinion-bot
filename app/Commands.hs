@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
 {-# LANGUAGE TupleSections #-}
-module Commands (mySlashCommands, SlashCommand (..)) where
+{-# LANGUAGE NamedFieldPuns #-}
+module Commands (mySlashCommands, SlashCommand (..), Constants(..)) where
 
 import Control.Monad (void, when, forM_, unless)
 import Control.Monad.IO.Class (liftIO)
@@ -27,11 +28,16 @@ data SlashCommand = SlashCommand
   , registration :: Maybe CreateApplicationCommand
   , handler :: Interaction -> Maybe OptionsData -> DiscordHandler ()}
 
-mySlashCommands :: [DataChannel Message History -> SlashCommand]
+data Constants = Constants
+  { msgChannel :: DataChannel Message History
+  , chatbotMode :: DataChannel () Bool
+  }
+
+mySlashCommands :: [Constants -> SlashCommand]
 mySlashCommands = [importData, analyse, something, top10]
 
-importData :: DataChannel Message History -> SlashCommand
-importData msgChannel = SlashCommand
+importData :: Constants -> SlashCommand
+importData Constants{msgChannel} = SlashCommand
   { name = "import"
   , registration = createChatInput "import" "import old messages from a channel"
   , handler = \intr _options -> do
@@ -66,8 +72,8 @@ runImport msgTiming msgChannel cid = do
             . (`oldestMessageId` cid) <$> (liftIO . request) msgChannel
           runImport (BeforeMessage oldestMsg) msgChannel cid
 
-analyse :: DataChannel Message History -> SlashCommand
-analyse msgChannel = SlashCommand
+analyse :: Constants -> SlashCommand
+analyse Constants{msgChannel} = SlashCommand
   { name = "analyse"
   , registration = createChatInput "analyse" "analyse message sentiment"
       >>= \cac -> pure $ cac { createOptions =
@@ -109,10 +115,8 @@ analyse msgChannel = SlashCommand
               void . restCall $ standardInteractionResponse intr (reply sentiment)
             Left err -> void . restCall $ ephermeralInteractionResponse intr ("Invalid input: " <> err)
 
-something :: DataChannel Message History -> SlashCommand
--- TODO: wrap DataChannel Message History as part of some Record, so that more slash command
--- creator parameters can be added
-something msgChannel = SlashCommand
+something :: Constants -> SlashCommand
+something Constants{msgChannel} = SlashCommand
   { name = "something"
   , registration = createChatInput "something" "says something"
   , handler = \intr _options -> liftIO (request msgChannel) >>= \history -> do
@@ -129,8 +133,8 @@ something msgChannel = SlashCommand
         then "I don't have anything to say"
         else txt
 
-top10 :: DataChannel Message History -> SlashCommand
-top10 msgChannel = SlashCommand
+top10 :: Constants -> SlashCommand
+top10 Constants{msgChannel} = SlashCommand
   { name = "topten"
   , registration = createChatInput "topten" "top 10 best messages on the server"
   , handler = \intr _options -> liftIO (request msgChannel) >>= \history -> do

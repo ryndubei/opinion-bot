@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module Negotiator (startHandler, eventHandler) where
 
 import Commands
@@ -12,15 +13,15 @@ import Discord
 import Discord.Interactions
 import qualified Discord.Requests as R
 import Discord.Types
-import Lib (DataChannel, send)
+import Lib (DataChannel, send, spawnDataManager)
 import MessageHistory (History)
 import Utils
 
 startHandler :: DiscordHandler ()
 startHandler = echo "Started opinion-bot"
 
-eventHandler :: GuildId -> DataChannel Message History -> Event -> DiscordHandler ()
-eventHandler testServerId msgChannel = \case
+eventHandler :: GuildId -> Constants -> Event -> DiscordHandler ()
+eventHandler testServerId constants@Constants{msgChannel} = \case
   Ready _ _ _ _ _ _ (PartialApplication appId _) -> onReady mySlashCommands' appId testServerId
   InteractionCreate intr                         -> onInteractionCreate mySlashCommands' intr
   MessageCreate msg                              -> echo (displayMessage msg)
@@ -45,7 +46,7 @@ eventHandler testServerId msgChannel = \case
                                                           <> T.pack (show err)
   _                                              -> pure ()
   where
-    mySlashCommands' = map (\f -> f msgChannel) mySlashCommands
+    mySlashCommands' = map (\f -> f constants) mySlashCommands
 
 displayMessage :: Message -> Text
 displayMessage msg = "( "
