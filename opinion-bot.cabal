@@ -36,6 +36,7 @@ library
       Lib
       SentimentAnalysis
       SentimentAnalysis.SentimentData
+      TextSimilarity
   other-modules:
       Paths_opinion_bot
   autogen-modules:
