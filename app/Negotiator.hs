@@ -62,10 +62,12 @@ eventHandler testServerId constants@Constants{msgChannel, chatbotMode} = \case
       let cids = fetchChannelIds history Nothing
           messages = map (\cid -> fetchMessages history (Just cid) Nothing) cids
           messages' = mapMaybe (`findReply` messageContent msg) messages
-          (reply, confidence) = if not (null messages')
-            then maximumBy (comparing snd) messages'
-            else ("I don't have anything to say.", 0)
-      echo ("Chatbot responding with confidence: " <> T.pack (show confidence))
+          (_, reply, confidence) = if not (null messages')
+            then maximumBy (comparing (\(_,_,x) -> x)) messages'
+            else ("", "I don't have anything to say.", 0)
+      echo ("Chatbot responding to message: " <> messageContent msg
+            <> "\nResponse candidates:\n\t" <> T.intercalate "\n\t" (map (T.pack . show) messages')
+            <> "\nChatbot responding with confidence: " <> T.pack (show confidence))
       void . restCall $ R.CreateMessage (messageChannelId msg) reply
 
 displayMessage :: Message -> Text

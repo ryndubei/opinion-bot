@@ -6,20 +6,21 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import Data.List (intersect, maximumBy)
 import Data.Ord (comparing)
-import Data.Bifunctor (first)
 import NLP.Tokenize.Text (tokenize)
 
 -- | Given a list of texts and another text, find the text in the list that is
--- most likely to immediately follow the given text, together with confidence.
-findReply :: [Text] -> Text -> Maybe (Text, Double)
+-- most likely to immediately follow the given text, together with confidence,
+-- as well as the immediately preceding text. The middle element of the tuple
+-- is the reply.
+findReply :: [Text] -> Text -> Maybe (Text, Text, Double)
 findReply [] _ = Nothing
 findReply [_] _ = Nothing
 findReply texts text =
   let texts' = init . zip [1..] $ map (tokenize . T.toLower) texts
-      text' = tokenize text
+      text' = tokenize (T.toLower text)
       cosSimilarities = map (\(i, t) -> (i, cosineSimilarity (makeVector text') (makeVector t))) texts'
-      mostSimilar = maximumBy (comparing snd) cosSimilarities
-   in Just (first (texts !!) mostSimilar)
+      (index, confidence) = maximumBy (comparing snd) cosSimilarities
+   in Just (texts!!(index - 1), texts!!index, confidence)
 
 type Vector = Map Text Double
 
