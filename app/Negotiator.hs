@@ -6,7 +6,7 @@ module Negotiator (startHandler, eventHandler) where
 import Commands
 import Control.Monad (forM_, unless, void)
 import Control.Monad.IO.Class (liftIO)
-import Data.List (find)
+import Data.List (find, maximumBy)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Discord
@@ -16,12 +16,10 @@ import Discord.Types
 import Lib (send, request)
 import Utils
 import Data.Bool (bool)
-import MessageHistory (fetchMessages)
-import SentimentAnalysis (analyseRawMessage)
-import SentimentAnalysis.SentimentData (getSentimentData)
-import System.Random (mkStdGen)
-import Data.Bifunctor (second)
-import Data.List.NonEmpty (nonEmpty)
+import MessageHistory (fetchMessages, fetchChannelIds)
+import TextSimilarity (findReply)
+import Data.Ord (comparing)
+import Data.Maybe (mapMaybe)
 
 startHandler :: DiscordHandler ()
 startHandler = echo "Started opinion-bot"
@@ -57,22 +55,17 @@ eventHandler testServerId constants@Constants{msgChannel, chatbotMode} = \case
     shouldIgnore msg = userIsBot (messageAuthor msg)
       || userIsWebhook (messageAuthor msg)
       || T.null (messageContent msg)
-    -- Randomly chooses a message weighted by the closeness to the 
-    -- sentiment of the given message, and replies with that message.
+    -- Responds to messages with the most fitting response from the message history.
     chatbotRespond :: Message -> DiscordHandler ()
     chatbotRespond msg = unless (shouldIgnore msg) $ do
       history <- liftIO (request msgChannel)
-      sentimentData <- liftIO getSentimentData
-      let stdGen = mkStdGen . round . utctDayTime . messageTimestamp $ msg
-          sentiment = analyseRawMessage sentimentData
-          targetSentiment = sentiment (messageContent msg)
-          messages = fetchMessages history Nothing Nothing
-          messages' = map (
-            second ((^ 1000) . (1 /)) 
-            . (\(t,s) -> if s == 0 then (t,0.1) else (t,s)) 
-            . (\t -> (t,abs (sentiment t - targetSentiment)))
-            ) messages
-          reply = maybe "I don't have anything to say" (drawWeightedRandom stdGen) (nonEmpty messages')
+      let cids = fetchChannelIds history Nothing
+          messages = map (\cid -> fetchMessages history (Just cid) Nothing) cids
+          messages' = mapMaybe (`findReply` messageContent msg) messages
+          (reply, confidence) = if not (null messages')
+            then maximumBy (comparing snd) messages'
+            else ("I don't have anything to say.", 0)
+      echo ("Chatbot responding with confidence: " <> T.pack (show confidence))
       void . restCall $ R.CreateMessage (messageChannelId msg) reply
 
 displayMessage :: Message -> Text
