@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module MessageHistory
   ( History
@@ -86,13 +87,13 @@ instance FromJSON ChannelMessages where
     <*> v .: "oldestMessage"
 
 instance ToJSON ChannelMessages where
-  toJSON (ChannelMessages userMap latestMessage oldestMessage) =
+  toJSON ChannelMessages{userMap, latestMessage, oldestMessage} =
     object
       [ "userMap" .= (map (second M.toList) . M.toList) userMap
       , "latestMessage" .= latestMessage
       , "oldestMessage" .= oldestMessage
       ]
-  toEncoding (ChannelMessages userMap latestMessage oldestMessage) =
+  toEncoding ChannelMessages{userMap, latestMessage, oldestMessage} =
     pairs ( "userMap" .= (map (second M.toList) . M.toList) userMap
          <> "latestMessage" .= latestMessage
          <> "oldestMessage" .= oldestMessage)
