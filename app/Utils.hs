@@ -62,3 +62,6 @@ drawWeightedRandom stdGen xs =
    in if total == 0
     then fst $ NE.head (NE.sortBy (\(_,a) (_,b) -> compare a b) xs)
     else x
+
+timestamp :: MessageId -> UTCTime
+timestamp = snowflakeCreationDate . unId

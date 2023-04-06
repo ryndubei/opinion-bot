@@ -1,17 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module MessageHistory 
-  ( History 
+module MessageHistory
+  ( History
   , pushMessage
-  , fetchMessages 
-  , latestMessageId 
-  , oldestMessageId 
+  , fetchMessages
+  , latestMessageId
+  , oldestMessageId
   , saveHistory
   , loadHistory
   , fetchChannelIds
   , fetchUserIds
-  ) 
+  )
 where
 
 import Control.Exception
@@ -28,12 +28,13 @@ import Discord.Types
   , Message (messageAuthor, messageChannelId, messageContent, messageId, messageTimestamp)
   , MessageId
   , userId
-  , UserId, UTCTime
+  , UserId, UTCTime 
   )
 import System.Directory (getXdgDirectory, XdgDirectory(XdgCache), createDirectoryIfMissing )
 import System.IO (hPutStrLn, stderr)
 import System.FilePath (dropFileName)
-import Data.List (nub)
+import Data.List (nub, sortOn)
+import Utils (timestamp)
 
 -- | A store of messages in channels by users who posted them.
 newtype History = History (Map ChannelId ChannelMessages) deriving (Show)
@@ -46,16 +47,16 @@ getHistoryLocation = getXdgDirectory XdgCache "opinion-bot-history.json"
 
 saveHistory :: History -> IO ()
 saveHistory history = getHistoryLocation >>= \path ->
-  createDirectoryIfMissing True (dropFileName path) 
+  createDirectoryIfMissing True (dropFileName path)
   >> BS.writeFile path (encode history)
 
 loadHistory :: IO History
 loadHistory = do
   path <- getHistoryLocation
-  historyJson <- first (\e -> 
+  historyJson <- first (\e ->
     displayException (e :: IOException)) <$> try (BS.readFile path)
   let mHistory = historyJson >>= eitherDecode
-  either 
+  either
     (\e -> hPutStrLn stderr e >> pure emptyHistory)
     pure mHistory
 
@@ -86,14 +87,14 @@ instance FromJSON ChannelMessages where
 
 instance ToJSON ChannelMessages where
   toJSON (ChannelMessages userMap latestMessage oldestMessage) =
-    object 
+    object
       [ "userMap" .= (map (second M.toList) . M.toList) userMap
       , "latestMessage" .= latestMessage
       , "oldestMessage" .= oldestMessage
       ]
   toEncoding (ChannelMessages userMap latestMessage oldestMessage) =
-    pairs ( "userMap" .= (map (second M.toList) . M.toList) userMap 
-         <> "latestMessage" .= latestMessage 
+    pairs ( "userMap" .= (map (second M.toList) . M.toList) userMap
+         <> "latestMessage" .= latestMessage
          <> "oldestMessage" .= oldestMessage)
 
 defaultChannelMessages :: ChannelMessages
@@ -149,9 +150,9 @@ fetchMessages history@(History historyMap) mcid muser =
     Just cid ->
       let cmsgs = fetchChannelMessages history cid
        in case muser of
-            Just user -> fetchUserMessages cmsgs user
+            Just user -> map snd . sortOn (timestamp . fst) $ fetchUserMessages cmsgs user
             -- if we don't have a specific user id we fetch messages from all users
-            Nothing -> concatMap (fetchUserMessages cmsgs) (M.keys (userMap cmsgs))
+            Nothing -> map snd . sortOn (timestamp . fst) $ concatMap (fetchUserMessages cmsgs) (M.keys (userMap cmsgs))
     -- if we don't have a specific channel id we fetch messages from all channel ids
     Nothing -> concatMap (\cid -> fetchMessages history (Just cid) muser) (M.keys historyMap)
 
@@ -176,8 +177,8 @@ fetchChannelIds history@(History historyMap) muser =
 fetchChannelMessages :: History -> ChannelId -> ChannelMessages
 fetchChannelMessages (History history) cid = fromMaybe defaultChannelMessages $ cid `M.lookup` history
 
-fetchUserMessages :: ChannelMessages -> UserId -> [Text]
-fetchUserMessages cmsgs user = maybe [] (map snd . M.toList) (user `M.lookup` userMap cmsgs)
+fetchUserMessages :: ChannelMessages -> UserId -> [(MessageId, Text)]
+fetchUserMessages cmsgs user = maybe [] M.toList (user `M.lookup` userMap cmsgs)
 
 -- | Get the MessageId of the latest message posted to a channel.
 latestMessageId :: History -> ChannelId -> Maybe MessageId
